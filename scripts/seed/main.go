@@ -52,3 +52,73 @@ type rawgPlatformWrapper struct {
 type rawgDeveloper struct {
 	Name string `json:"name"`
 }
+
+// Variables globales del script
+
+var db *sql.DB
+var apiKey string
+
+
+
+func main() {
+	// Cargar .env desde la raiz del proyecto
+	if err := godotenv.Load(".env"); err != nil {
+		log.Println("no se encontro .env, usando variables de entorno del sistema")
+	}
+
+	apiKey = os.Getenv("RAWG_API_KEY")
+	if apiKey == "" {
+		log.Fatal("RAWG_API_KEY no esta configurada")
+	}
+
+	// Conectar a PostgreSQL
+	dsn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_NAME"),
+	)
+
+	var err error
+	db, err = sql.Open("postgres", dsn)
+	if err != nil {
+		log.Fatalf("error al abrir la base de datos: %v", err)
+	}
+	defer db.Close()
+
+	if err = db.Ping(); err != nil {
+		log.Fatalf("error al conectar con la base de datos: %v", err)
+	}
+	fmt.Println("conectado a PostgreSQL")
+
+	// Obtener juegos de RAWG con sus detalles
+	fmt.Println("obteniendo juegos de RAWG...")
+	games, err := fetchGamesWithDetails(25)
+	if err != nil {
+		log.Fatalf("error al obtener juegos de RAWG: %v", err)
+	}
+	fmt.Printf("obtenidos %d juegos\n\n", len(games))
+
+	// Insertar cada juego en la base de datos
+	inserted, skipped := 0, 0
+	for i, g := range games {
+		fmt.Printf("[%d/%d] %s... ", i+1, len(games), g.Name)
+
+		ok, err := seedGame(g)
+		if err != nil {
+			fmt.Printf("ERROR: %v\n", err)
+			continue
+		}
+		if ok {
+			fmt.Println("insertado")
+			inserted++
+		} else {
+			fmt.Println("omitido (ya existe)")
+			skipped++
+		}
+	}
+
+	fmt.Printf("\nresultado final: %d insertados, %d omitidos\n", inserted, skipped)
+}
