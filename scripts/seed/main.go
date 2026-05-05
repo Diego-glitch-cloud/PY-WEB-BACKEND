@@ -122,3 +122,57 @@ func main() {
 
 	fmt.Printf("\nresultado final: %d insertados, %d omitidos\n", inserted, skipped)
 }
+
+// Funciones de llamada a RAWG 
+
+// fetchGamesWithDetails obtiene la lista de juegos y luego el detalle de cada uno.
+// El endpoint de lista no incluye description ni developers
+func fetchGamesWithDetails(count int) ([]rawgDetail, error) {
+	url := fmt.Sprintf(
+		"%s/games?key=%s&tags=singleplayer&page_size=%d&ordering=-rating&exclude_additions=true",
+		rawgBase, apiKey, count,
+	)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error al llamar RAWG list: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var list rawgListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("error al decodificar lista: %w", err)
+	}
+
+	var details []rawgDetail
+	for _, item := range list.Results {
+		time.Sleep(250 * time.Millisecond) // respetar rate limit de RAWG
+
+		detail, err := fetchDetail(item.ID)
+		if err != nil {
+			log.Printf("aviso: no se pudo obtener detalle de '%s', usando datos basicos\n", item.Name)
+			details = append(details, rawgDetail{rawgListItem: item})
+			continue
+		}
+		details = append(details, *detail)
+	}
+
+	return details, nil
+}
+
+// fetchDetail obtiene el detalle completo de un juego por su ID de RAWG.
+func fetchDetail(id int) (*rawgDetail, error) {
+	url := fmt.Sprintf("%s/games/%d?key=%s", rawgBase, id, apiKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var detail rawgDetail
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return nil, err
+	}
+	return &detail, nil
+}
