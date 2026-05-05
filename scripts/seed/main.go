@@ -176,3 +176,90 @@ func fetchDetail(id int) (*rawgDetail, error) {
 	}
 	return &detail, nil
 }
+
+// Funciones de escritura en la base de datos 
+
+// getOrCreate inserta un valor en una tabla de lookup y devuelve su ID.
+// Si el valor ya existe devuelve el ID existente sin modificar nada.
+// Devuelve nil si el valor esta vacio.
+func getOrCreate(table, column, value string) (*int, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+
+	var id int
+	query := fmt.Sprintf(
+		`INSERT INTO %s (%s) VALUES ($1)
+		 ON CONFLICT (%s) DO UPDATE SET %s = EXCLUDED.%s
+		 RETURNING id`,
+		table, column, column, column, column,
+	)
+	if err := db.QueryRow(query, value).Scan(&id); err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+// seedGame inserta un juego completo en la base de datos.
+// Devuelve (false, nil) si el juego ya existia (detectado por titulo).
+func seedGame(g rawgDetail) (bool, error) {
+	// Evitar duplicados si el script se ejecuta mas de una vez
+	var exists bool
+	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM games WHERE title = $1)", g.Name).Scan(&exists); err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil
+	}
+
+	// Extraer el primer valor de cada campo multi-valor
+	var genreName, platformName, developerName string
+	if len(g.Genres) > 0 {
+		genreName = g.Genres[0].Name
+	}
+	if len(g.Platforms) > 0 {
+		platformName = g.Platforms[0].Platform.Name
+	}
+	if len(g.Developers) > 0 {
+		developerName = g.Developers[0].Name
+	}
+
+	// Obtener o crear IDs en las tablas de lookup
+	genreID, err := getOrCreate("genres", "name", genreName)
+	if err != nil {
+		return false, fmt.Errorf("genre: %w", err)
+	}
+	platformID, err := getOrCreate("platforms", "name", platformName)
+	if err != nil {
+		return false, fmt.Errorf("platform: %w", err)
+	}
+	developerID, err := getOrCreate("developers", "name", developerName)
+	if err != nil {
+		return false, fmt.Errorf("developer: %w", err)
+	}
+
+	// Extraer el año desde el formato "2013-09-17"
+	var releaseYear *int
+	if g.Released != "" {
+		parts := strings.Split(g.Released, "-")
+		if y, err := strconv.Atoi(parts[0]); err == nil {
+			releaseYear = &y
+		}
+	}
+
+	// Truncar descripciones muy largas de RAWG
+	desc := strings.TrimSpace(g.DescriptionRaw)
+	if len(desc) > 5000 {
+		desc = desc[:5000]
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO games (title, genre_id, platform_id, developer_id, release_year, description, image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, g.Name, genreID, platformID, developerID, releaseYear, desc, g.BackgroundImage)
+
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
