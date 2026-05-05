@@ -218,7 +218,158 @@ func GetGame(c *gin.Context) {
 	c.JSON(http.StatusOK, g)
 }
 
-func CreateGame(c *gin.Context)  {}
-func UpdateGame(c *gin.Context)  {}
-func DeleteGame(c *gin.Context)  {}
+// CreateGame godoc
+// POST /games
+func CreateGame(c *gin.Context) {
+	var input models.GameInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "validation_failed",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	genreID, err := getOrCreateLookup("genres", "name", input.Genre)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+	platformID, err := getOrCreateLookup("platforms", "name", input.Platform)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+	developerID, err := getOrCreateLookup("developers", "name", input.Developer)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	var newID int
+	err = db.DB.QueryRow(`
+		INSERT INTO games (title, genre_id, platform_id, developer_id, release_year, description, image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id`,
+		input.Title, genreID, platformID, developerID,
+		input.ReleaseYear, input.Description, input.ImageURL,
+	).Scan(&newID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	// Devolver el juego completo recien creado
+	query := fmt.Sprintf(`%s WHERE g.id = $1 GROUP BY g.id, gen.name, plt.name, dev.name`, baseSelect)
+	g, err := scanGame(db.DB.QueryRow(query, newID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, g)
+}
+
+// UpdateGame godoc
+// PUT /games/:id
+func UpdateGame(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_id",
+			Message: "el ID debe ser un numero entero",
+			Field:   "id",
+		})
+		return
+	}
+
+	// Verificar que el juego existe
+	var exists bool
+	if err := db.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM games WHERE id = $1)", id).Scan(&exists); err != nil || !exists {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "not_found",
+			Message: fmt.Sprintf("no existe un juego con ID %d", id),
+		})
+		return
+	}
+
+	var input models.GameInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "validation_failed",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	genreID, err := getOrCreateLookup("genres", "name", input.Genre)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+	platformID, err := getOrCreateLookup("platforms", "name", input.Platform)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+	developerID, err := getOrCreateLookup("developers", "name", input.Developer)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	_, err = db.DB.Exec(`
+		UPDATE games
+		SET title=$1, genre_id=$2, platform_id=$3, developer_id=$4,
+		    release_year=$5, description=$6, image_url=$7
+		WHERE id=$8`,
+		input.Title, genreID, platformID, developerID,
+		input.ReleaseYear, input.Description, input.ImageURL, id,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	query := fmt.Sprintf(`%s WHERE g.id = $1 GROUP BY g.id, gen.name, plt.name, dev.name`, baseSelect)
+	g, err := scanGame(db.DB.QueryRow(query, id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, g)
+}
+
+// DeleteGame godoc
+// DELETE /games/:id
+func DeleteGame(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_id",
+			Message: "el ID debe ser un numero entero",
+			Field:   "id",
+		})
+		return
+	}
+
+	result, err := db.DB.Exec("DELETE FROM games WHERE id = $1", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "not_found",
+			Message: fmt.Sprintf("no existe un juego con ID %d", id),
+		})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func UploadImage(c *gin.Context) {}
