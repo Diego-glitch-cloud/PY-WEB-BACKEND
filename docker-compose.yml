@@ -1,3 +1,4 @@
+# este archivo puede versionarse porque no contiene informacion sensible
 services:
   db:
     image: postgres:16
