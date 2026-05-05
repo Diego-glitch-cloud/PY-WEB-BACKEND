@@ -1,0 +1,37 @@
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Binario compilado de Go
+/videogame-tracker-backend
+/main
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Artefactos de test de Go
+*.test
+*.out
+
+# Directorio vendor (dependencias locales)
+vendor/
+
+# Imágenes subidas por usuarios — guardar solo el directorio, no el contenido
+uploads/*
+!uploads/.gitkeep
+
+# IDEs y editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
