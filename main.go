@@ -53,7 +53,6 @@ func setupRoutes(router *gin.Engine) {
 	// Archivos estaticos
 	router.Static("/uploads", "./uploads")
 	router.Static("/swagger", "./docs/swagger-ui")
-	router.StaticFile("/swagger/openapi.yaml", "./docs/openapi.yaml")
 
 	// Rutas de videojuegos
 	router.GET("/games", handlers.GetGames)

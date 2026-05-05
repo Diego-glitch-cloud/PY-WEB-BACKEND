@@ -3,9 +3,10 @@
 .env.local
 .env.*.local
 
-# Binario compilado de Go
+# Binarios compilados de Go
 /videogame-tracker-backend
 /main
+/seed
 *.exe
 *.dll
 *.so
