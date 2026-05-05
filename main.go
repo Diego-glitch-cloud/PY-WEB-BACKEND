@@ -40,3 +40,30 @@ func main() {
 		log.Fatalf("error al iniciar el servidor: %v", err)
 	}
 }
+
+func setupCORS(router *gin.Engine) {
+	router.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Content-Type"},
+	}))
+}
+
+func setupRoutes(router *gin.Engine) {
+	// Archivos estaticos
+	router.Static("/uploads", "./uploads")
+	router.Static("/swagger", "./docs/swagger-ui")
+	router.StaticFile("/swagger/openapi.yaml", "./docs/openapi.yaml")
+
+	// Rutas de videojuegos
+	router.GET("/games", handlers.GetGames)
+	router.GET("/games/:id", handlers.GetGame)
+	router.POST("/games", handlers.CreateGame)
+	router.PUT("/games/:id", handlers.UpdateGame)
+	router.DELETE("/games/:id", handlers.DeleteGame)
+
+	// Rutas de ratings e imagen
+	router.POST("/games/:id/rating", handlers.CreateRating)
+	router.GET("/games/:id/rating", handlers.GetRatings)
+	router.POST("/games/:id/image", handlers.UploadImage)
+}
