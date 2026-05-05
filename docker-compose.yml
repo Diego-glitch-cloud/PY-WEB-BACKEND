@@ -24,7 +24,7 @@ services:
     volumes:
       - .:/app
       - go-cache:/go/pkg/mod
-    command: go run scripts/seed/main.go
+    command: go run scripts/seed/seed.go
     env_file:
       - .env
     environment:
