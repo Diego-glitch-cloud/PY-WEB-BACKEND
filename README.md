@@ -3,13 +3,18 @@
 API REST para un catálogo de videojuegos singleplayer. Expone datos en formato JSON y no genera HTML. Construido con Go + Gin + PostgreSQL.
 
 **Repositorio del cliente:** https://github.com/Diego-glitch-cloud/PY-WEB-CLIENT  
-**API en producción:** https://[pendiente].up.railway.app
+**Frontend en producción:** https://diego-glitch-cloud.github.io/PY-WEB-CLIENT/
+**API en producción (Railway):** https://py-web-backend-production.up.railway.app
 
 ---
 
-## Screenshot
+## Screenshots del Despliegue
 
-![Prueba de la API con Postman](./docs/screenshots/api-test.png)
+### Railway (PostgreSQL + Backend)
+![Despliegue exitoso en Railway](./docs/screenshots/railway.png)
+
+### Swagger UI (Documentación Interactiva)
+![Documentación Swagger funcionando en producción](./docs/screenshots/swagger.png)
 
 ---
 
@@ -196,13 +201,16 @@ Implementado con `github.com/gin-contrib/cors` en `main.go`.
 
 | Challenge | Puntos |
 |-----------|--------|
+| Spec de OpenAPI/Swagger escrita y precisa | 20 |
+| Swagger UI corriendo y servido desde el backend | 20 |
 | Códigos HTTP correctos (201, 204, 404, 400) | 20 |
 | Validación server-side con respuestas JSON descriptivas | 20 |
+| Paginación en GET /games con `?page=` y `?limit=` | 30 |
 | Búsqueda por nombre con `?q=` | 15 |
 | Ordenamiento con `?sort=` y `?order=asc\|desc` | 15 |
-| Paginación con `?page=` y `?limit=` | 30 |
 | Sistema de rating (tabla propia, endpoints REST) | 30 |
-| **Total backend** | **130** |
+| Subida de imágenes (Límite de 1MB implementado) | 30 |
+| **Total backend** | **220** |
 
 ---
 
@@ -226,3 +234,7 @@ Creo que el desafio mas interesante fue hacer el script para la seed de la base 
 PostgreSQL demostró ser considerablemente robusto, pues las constraints (`CHECK`, `FOREIGN KEY`, `UNIQUE`), los triggers para `updated_at`, y el soporte nativo para `ILIKE` en búsquedas case-insensitive son características utiles en estos contextos.
 
 El concepto de CORS me pareció interesante, y también me resultó interesante la configuración que se realiza en el go y también en el servidor. Considero que es importante mantener esse tipo de seguridad para tener un control de las consultas externas que se realizan y las comunicaciones que pueden o no existir. 
+
+
+**¿Usaría esta tecnología de nuevo?** 
+Sí la usaría, pero también creo que consideraría otros lenguajes y herramientas ya que go requiere de mucha programación defensiva, proceso que se podría aligerar utilziando otro lenguaje como express. Sin embargo, el rendimiento de go es muy bueno, por lo que creo que sería ideal para proyectos que requieren alto rendimiento. 
