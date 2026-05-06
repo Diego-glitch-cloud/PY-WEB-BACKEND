@@ -52,6 +52,7 @@ func setupCORS(router *gin.Engine) {
 func setupRoutes(router *gin.Engine) {
 	// Archivos estaticos
 	router.Static("/uploads", "./uploads")
+	router.Static("/docs", "./docs")
 	router.Static("/swagger", "./docs/swagger-ui")
 
 	// Rutas de videojuegos

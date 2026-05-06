@@ -1,4 +1,3 @@
-# este archivo puede versionarse porque no contiene informacion sensible
 services:
   db:
     image: postgres:16
@@ -10,7 +9,6 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # schema.sql se ejecuta automaticamente la primera vez que se crea el volumen
       - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
@@ -19,18 +17,31 @@ services:
       retries: 5
     restart: unless-stopped
 
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./uploads:/app/uploads
+
   seed:
-    image: golang:1.26
+    image: golang:1.26-alpine
     working_dir: /app
     volumes:
       - .:/app
-      - go-cache:/go/pkg/mod
     command: go run scripts/seed/seed.go
     env_file:
       - .env
     environment:
-      # Dentro de Docker el host es el nombre del servicio, no localhost
-      # El puerto interno de postgres es siempre 5432 (el mapeo 5433 es solo para el host)
       DB_HOST: db
       DB_PORT: "5432"
     depends_on:
@@ -48,4 +59,3 @@ services:
 
 volumes:
   pgdata:
-  go-cache:

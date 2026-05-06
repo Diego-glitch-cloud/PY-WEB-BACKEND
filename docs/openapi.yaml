@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Video Game Tracker API
+  description: API para gestionar un catálogo de videojuegos, ratings e imágenes.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Servidor local de desarrollo
+
+paths:
+  /games:
+    get:
+      summary: Listar videojuegos
+      parameters:
+        - name: q
+          in: query
+          description: Búsqueda por nombre (case-insensitive)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Campo por el cual ordenar
+          schema:
+            type: string
+            enum: [title, release_year, genre, created_at, updated_at]
+        - name: order
+          in: query
+          description: Dirección del orden
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Lista paginada de videojuegos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+    post:
+      summary: Crear un nuevo videojuego
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameInput'
+      responses:
+        '201':
+          description: Videojuego creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameResponse'
+        '400':
+          description: Error de validación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Obtener un videojuego por ID
+      responses:
+        '200':
+          description: Videojuego encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameResponse'
+        '404':
+          description: Videojuego no encontrado
+    put:
+      summary: Actualizar un videojuego
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameInput'
+      responses:
+        '200':
+          description: Videojuego actualizado
+        '404':
+          description: Videojuego no encontrado
+    delete:
+      summary: Eliminar un videojuego
+      responses:
+        '204':
+          description: Videojuego eliminado
+        '404':
+          description: Videojuego no encontrado
+
+  /games/{id}/rating:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Obtener ratings de un juego
+      responses:
+        '200':
+          description: Resumen de ratings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingResponse'
+    post:
+      summary: Calificar un juego
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RatingInput'
+      responses:
+        '201':
+          description: Rating creado
+
+  /games/{id}/image:
+    post:
+      summary: Subir imagen para un juego
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Imagen subida exitosamente
+
+components:
+  schemas:
+    GameInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        genre:
+          type: string
+          maxLength: 100
+        platform:
+          type: string
+          maxLength: 100
+        developer:
+          type: string
+          maxLength: 255
+        release_year:
+          type: integer
+          minimum: 1970
+          maximum: 2030
+        description:
+          type: string
+        image_url:
+          type: string
+    GameResponse:
+      allOf:
+        - $ref: '#/components/schemas/GameInput'
+        - type: object
+          properties:
+            id:
+              type: integer
+            avg_rating:
+              type: number
+              nullable: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameResponse'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+    RatingInput:
+      type: object
+      required: [score]
+      properties:
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+    RatingResponse:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        average:
+          type: number
+        count:
+          type: integer
+        scores:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              score:
+                type: integer
+              created_at:
+                type: string
+                format: date-time
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        field:
+          type: string
