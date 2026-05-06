@@ -1,4 +1,4 @@
-package main
+package seed
 
 import (
 	"database/sql"
@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
@@ -107,38 +106,24 @@ var gamesToSearch = []string{ // lista de juegos para poblar inicialmente la DB
 	"Fallout: New Vegas",
 }
 
-func main() {
-	if err := godotenv.Load(".env"); err != nil {
-		log.Println("no se encontro .env, usando variables de entorno del sistema")
-	}
+func Run(database *sql.DB) {
+	db = database
 
 	apiKey = os.Getenv("RAWG_API_KEY")
 	if apiKey == "" {
-		log.Fatal("RAWG_API_KEY no esta configurada")
+		log.Println("RAWG_API_KEY no esta configurada. Omitiendo Auto-Seed.")
+        return
 	}
 
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
-	)
-
-	var err error
-	db, err = sql.Open("postgres", dsn)
-	if err != nil {
-		log.Fatalf("error al abrir la base de datos: %v", err)
+    // Revisar si ya hay juegos para no repetir el proceso lento de 50 juegos
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM games").Scan(&count); err == nil && count > 0 {
+		log.Println("La base de datos ya tiene juegos. Omitiendo Auto-Seed.")
+		return
 	}
-	defer db.Close()
-    
-    rand.Seed(time.Now().UnixNano())
 
-	if err = db.Ping(); err != nil {
-		log.Fatalf("error al conectar con la base de datos: %v", err)
-	}
-	fmt.Println("conectado a PostgreSQL")
+	rand.Seed(time.Now().UnixNano())
+	log.Println("Iniciando auto-seed de videojuegos...")
 
 	inserted, skipped := 0, 0
 	for i, gameName := range gamesToSearch {

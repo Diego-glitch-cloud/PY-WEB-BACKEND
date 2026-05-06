@@ -10,6 +10,7 @@ import (
 
 	"github.com/Diego-glitch-cloud/PY-WEB-BACKEND/db"
 	"github.com/Diego-glitch-cloud/PY-WEB-BACKEND/handlers"
+	"github.com/Diego-glitch-cloud/PY-WEB-BACKEND/scripts/seed"
 )
 
 func main() {
@@ -20,6 +21,21 @@ func main() {
 
 	// Conectar a PostgreSQL
 	db.Connect()
+
+	// Ejecutar Schema automáticamente (para Railway o DB nuevas)
+	schemaBytes, err := os.ReadFile("db/schema.sql")
+	if err == nil {
+		if _, err := db.DB.Exec(string(schemaBytes)); err != nil {
+			log.Printf("Error aplicando schema.sql: %v", err)
+		} else {
+			log.Println("Schema aplicado correctamente")
+		}
+	} else {
+		log.Printf("No se pudo leer db/schema.sql: %v", err)
+	}
+
+	// Ejecutar Seeding Automático
+	seed.Run(db.DB)
 
 	// Crear el router de Gin
 	router := gin.Default()
