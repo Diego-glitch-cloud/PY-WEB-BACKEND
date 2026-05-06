@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -131,6 +132,8 @@ func main() {
 		log.Fatalf("error al abrir la base de datos: %v", err)
 	}
 	defer db.Close()
+    
+    rand.Seed(time.Now().UnixNano())
 
 	if err = db.Ping(); err != nil {
 		log.Fatalf("error al conectar con la base de datos: %v", err)
@@ -260,10 +263,21 @@ func seedGame(g rawgDetail) (bool, error) {
 		desc = desc[:5000]
 	}
 
-	_, err := db.Exec(`
+	var gameID int
+	err := db.QueryRow(`
 		INSERT INTO games (title, genre_id, platform_id, developer_id, release_year, description, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, g.Name, genreID, platformID, developerID, releaseYear, desc, g.BackgroundImage)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+	`, g.Name, genreID, platformID, developerID, releaseYear, desc, g.BackgroundImage).Scan(&gameID)
+
+	if err == nil {
+		// Insertar ratings aleatorios
+		numRatings := rand.Intn(15) + 1 // 1 a 15 ratings
+		for i := 0; i < numRatings; i++ {
+			// Favorecer scores altos para que se vea mejor (3 a 5)
+			score := rand.Intn(3) + 3 
+			db.Exec("INSERT INTO ratings (game_id, score) VALUES ($1, $2)", gameID, score)
+		}
+	}
 
 	return err == nil, err
 }
