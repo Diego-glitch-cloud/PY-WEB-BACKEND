@@ -17,8 +17,6 @@ import (
 
 const rawgBase = "https://api.rawg.io/api"
 
-// ---- Tipos para deserializar la respuesta de RAWG ----
-
 type rawgListResponse struct {
 	Results []rawgListItem `json:"results"`
 }
@@ -32,7 +30,6 @@ type rawgListItem struct {
 	Platforms       []rawgPlatformWrapper `json:"platforms"`
 }
 
-// rawgDetail extiende rawgListItem con campos que solo devuelve el endpoint de detalle
 type rawgDetail struct {
 	rawgListItem
 	DescriptionRaw string          `json:"description_raw"`
@@ -53,15 +50,63 @@ type rawgDeveloper struct {
 	Name string `json:"name"`
 }
 
-// Variables globales del script
-
 var db *sql.DB
 var apiKey string
 
-
+var gamesToSearch = []string{ // lista de juegos para poblar inicialmente la DB
+	"The Legend of Zelda: Breath of the Wild",
+	"The Legend of Zelda: Tears of the Kingdom",
+	"The Witcher 3: Wild Hunt",
+	"Red Dead Redemption 2",
+	"Elden Ring",
+	"Dark Souls",
+	"Bloodborne",
+	"Sekiro: Shadows Die Twice",
+	"The Elder Scrolls V: Skyrim",
+	"The Last of Us",
+	"The Last of Us Part II",
+	"God of War (2018)",
+	"God of War Ragnarök",
+	"Horizon Zero Dawn",
+	"Horizon Forbidden West",
+	"Ghost of Tsushima",
+	"Uncharted 2: Among Thieves",
+	"Uncharted 4: A Thief’s End",
+	"Metal Gear Solid 3: Snake Eater",
+	"Metal Gear Solid V: The Phantom Pain",
+	"BioShock",
+	"BioShock Infinite",
+	"Half-Life 2",
+	"Portal 2",
+	"Resident Evil 4",
+	"Resident Evil 2 Remake",
+	"Dead Space",
+	"Dead Space Remake",
+	"Super Mario Galaxy",
+	"Super Mario Odyssey",
+	"Hollow Knight",
+	"Celeste",
+	"Hades",
+	"Undertale",
+	"Disco Elysium",
+	"Persona 5 Royal",
+	"Final Fantasy VII Remake",
+	"Final Fantasy X",
+	"Final Fantasy XII",
+	"Chrono Trigger",
+	"Dragon Quest XI S",
+	"Nier: Automata",
+	"Nier Replicant",
+	"Control",
+	"Alan Wake 2",
+	"Batman: Arkham City",
+	"Batman: Arkham Knight",
+	"Prince of Persia: The Sands of Time",
+	"Assassin’s Creed II",
+	"Fallout: New Vegas",
+}
 
 func main() {
-	// Cargar .env desde la raiz del proyecto
 	if err := godotenv.Load(".env"); err != nil {
 		log.Println("no se encontro .env, usando variables de entorno del sistema")
 	}
@@ -71,7 +116,6 @@ func main() {
 		log.Fatal("RAWG_API_KEY no esta configurada")
 	}
 
-	// Conectar a PostgreSQL
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		os.Getenv("DB_HOST"),
@@ -93,22 +137,23 @@ func main() {
 	}
 	fmt.Println("conectado a PostgreSQL")
 
-	// Obtener juegos de RAWG con sus detalles
-	fmt.Println("obteniendo juegos de RAWG...")
-	games, err := fetchGamesWithDetails(25)
-	if err != nil {
-		log.Fatalf("error al obtener juegos de RAWG: %v", err)
-	}
-	fmt.Printf("obtenidos %d juegos\n\n", len(games))
-
-	// Insertar cada juego en la base de datos
 	inserted, skipped := 0, 0
-	for i, g := range games {
-		fmt.Printf("[%d/%d] %s... ", i+1, len(games), g.Name)
+	for i, gameName := range gamesToSearch {
+		fmt.Printf("[%d/%d] Buscando: %s... ", i+1, len(gamesToSearch), gameName)
 
-		ok, err := seedGame(g)
+		gameDetail, err := searchAndFetchDetail(gameName)
 		if err != nil {
 			fmt.Printf("ERROR: %v\n", err)
+			continue
+		}
+		if gameDetail == nil {
+			fmt.Println("No encontrado")
+			continue
+		}
+
+		ok, err := seedGame(*gameDetail)
+		if err != nil {
+			fmt.Printf("ERROR al insertar: %v\n", err)
 			continue
 		}
 		if ok {
@@ -118,52 +163,36 @@ func main() {
 			fmt.Println("omitido (ya existe)")
 			skipped++
 		}
+
+		time.Sleep(250 * time.Millisecond) // Respetar rate limit
 	}
 
 	fmt.Printf("\nresultado final: %d insertados, %d omitidos\n", inserted, skipped)
 }
 
-// Funciones de llamada a RAWG 
+func searchAndFetchDetail(name string) (*rawgDetail, error) {
+	searchURL := fmt.Sprintf("%s/games?key=%s&search=%s&page_size=1", rawgBase, apiKey, strings.ReplaceAll(name, " ", "+"))
 
-// fetchGamesWithDetails obtiene la lista de juegos y luego el detalle de cada uno.
-// El endpoint de lista no incluye description ni developers
-func fetchGamesWithDetails(count int) ([]rawgDetail, error) {
-	url := fmt.Sprintf(
-		"%s/games?key=%s&tags=singleplayer&page_size=%d&ordering=-rating&exclude_additions=true",
-		rawgBase, apiKey, count,
-	)
-
-	resp, err := http.Get(url)
+	resp, err := http.Get(searchURL)
 	if err != nil {
-		return nil, fmt.Errorf("error al llamar RAWG list: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	var list rawgListResponse
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("error al decodificar lista: %w", err)
+		return nil, err
 	}
 
-	var details []rawgDetail
-	for _, item := range list.Results {
-		time.Sleep(250 * time.Millisecond) // respetar rate limit de RAWG
-
-		detail, err := fetchDetail(item.ID)
-		if err != nil {
-			log.Printf("aviso: no se pudo obtener detalle de '%s', usando datos basicos\n", item.Name)
-			details = append(details, rawgDetail{rawgListItem: item})
-			continue
-		}
-		details = append(details, *detail)
+	if len(list.Results) == 0 {
+		return nil, nil
 	}
 
-	return details, nil
+	return fetchDetail(list.Results[0].ID)
 }
 
-// fetchDetail obtiene el detalle completo de un juego por su ID de RAWG.
 func fetchDetail(id int) (*rawgDetail, error) {
 	url := fmt.Sprintf("%s/games/%d?key=%s", rawgBase, id, apiKey)
-
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -177,16 +206,10 @@ func fetchDetail(id int) (*rawgDetail, error) {
 	return &detail, nil
 }
 
-// Funciones de escritura en la base de datos 
-
-// getOrCreate inserta un valor en una tabla de lookup y devuelve su ID.
-// Si el valor ya existe devuelve el ID existente sin modificar nada.
-// Devuelve nil si el valor esta vacio.
 func getOrCreate(table, column, value string) (*int, error) {
 	if strings.TrimSpace(value) == "" {
 		return nil, nil
 	}
-
 	var id int
 	query := fmt.Sprintf(
 		`INSERT INTO %s (%s) VALUES ($1)
@@ -200,10 +223,7 @@ func getOrCreate(table, column, value string) (*int, error) {
 	return &id, nil
 }
 
-// seedGame inserta un juego completo en la base de datos.
-// Devuelve (false, nil) si el juego ya existia (detectado por titulo).
 func seedGame(g rawgDetail) (bool, error) {
-	// Evitar duplicados si el script se ejecuta mas de una vez
 	var exists bool
 	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM games WHERE title = $1)", g.Name).Scan(&exists); err != nil {
 		return false, err
@@ -212,7 +232,6 @@ func seedGame(g rawgDetail) (bool, error) {
 		return false, nil
 	}
 
-	// Extraer el primer valor de cada campo multi-valor
 	var genreName, platformName, developerName string
 	if len(g.Genres) > 0 {
 		genreName = g.Genres[0].Name
@@ -224,21 +243,10 @@ func seedGame(g rawgDetail) (bool, error) {
 		developerName = g.Developers[0].Name
 	}
 
-	// Obtener o crear IDs en las tablas de lookup
-	genreID, err := getOrCreate("genres", "name", genreName)
-	if err != nil {
-		return false, fmt.Errorf("genre: %w", err)
-	}
-	platformID, err := getOrCreate("platforms", "name", platformName)
-	if err != nil {
-		return false, fmt.Errorf("platform: %w", err)
-	}
-	developerID, err := getOrCreate("developers", "name", developerName)
-	if err != nil {
-		return false, fmt.Errorf("developer: %w", err)
-	}
+	genreID, _ := getOrCreate("genres", "name", genreName)
+	platformID, _ := getOrCreate("platforms", "name", platformName)
+	developerID, _ := getOrCreate("developers", "name", developerName)
 
-	// Extraer el año desde el formato "2013-09-17"
 	var releaseYear *int
 	if g.Released != "" {
 		parts := strings.Split(g.Released, "-")
@@ -247,19 +255,15 @@ func seedGame(g rawgDetail) (bool, error) {
 		}
 	}
 
-	// Truncar descripciones muy largas de RAWG
 	desc := strings.TrimSpace(g.DescriptionRaw)
 	if len(desc) > 5000 {
 		desc = desc[:5000]
 	}
 
-	_, err = db.Exec(`
+	_, err := db.Exec(`
 		INSERT INTO games (title, genre_id, platform_id, developer_id, release_year, description, image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`, g.Name, genreID, platformID, developerID, releaseYear, desc, g.BackgroundImage)
 
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	return err == nil, err
 }
