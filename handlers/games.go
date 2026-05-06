@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -372,4 +374,83 @@ func DeleteGame(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func UploadImage(c *gin.Context) {}
+// UploadImage godoc
+// POST /games/:id/image
+func UploadImage(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_id",
+			Message: "el ID debe ser un numero entero",
+			Field:   "id",
+		})
+		return
+	}
+
+	// Verificar que el juego existe
+	var exists bool
+	if err := db.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM games WHERE id = $1)", id).Scan(&exists); err != nil || !exists {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "not_found",
+			Message: fmt.Sprintf("no existe un juego con ID %d", id),
+		})
+		return
+	}
+
+	// Limitar tamaño de la solicitud a ~1MB (1048576 bytes)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+
+	file, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_file",
+			Message: "no se encontro imagen o excede el limite de 1MB",
+		})
+		return
+	}
+
+	// Validar el tipo de archivo (JPEG, PNG, WebP)
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_format",
+			Message: "formato no soportado, usa JPG, PNG o WebP",
+		})
+		return
+	}
+
+	// Generar nombre de archivo unico
+	filename := fmt.Sprintf("%d_%d%s", id, time.Now().Unix(), ext)
+	filepathStr := filepath.Join("uploads", filename)
+
+	// Guardar el archivo en disco
+	if err := c.SaveUploadedFile(file, filepathStr); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "save_error",
+			Message: "error al guardar la imagen",
+		})
+		return
+	}
+
+	// Guardar URL relativa en DB (para que funcione bien con router.Static)
+	imageURL := fmt.Sprintf("/uploads/%s", filename)
+
+	_, err = db.DB.Exec("UPDATE games SET image_url = $1 WHERE id = $2", imageURL, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "db_error",
+			Message: "error al actualizar la base de datos",
+		})
+		return
+	}
+
+	// Recuperar el juego actualizado para retornarlo
+	query := fmt.Sprintf(`%s WHERE g.id = $1 GROUP BY g.id, gen.name, plt.name, dev.name`, baseSelect)
+	g, err := scanGame(db.DB.QueryRow(query, id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "db_error", Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, g)
+}
